@@ -7,20 +7,10 @@ on:
     branches: [ main, master ]
 
 jobs:
-  azure-login-job:
-    runs-on: ubuntu-latest
-    steps:
-      # Step 1: Log into Azure using the stored secret
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.MYAZURETENANT }}
-
   # Stage 1: Static Analysis and Formatting
   validate_and_lint:
     name: Lint & Validate
     runs-on: ubuntu-latest
-    needs: azure-login-job
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
@@ -51,8 +41,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: validate_and_lint
     # Optional: Restrict apply to push events on main branches
-    # environment: production 
     steps:
+      # Log into Azure using the stored secret
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.MYAZURETENANT }}
+          
       - name: Checkout Code
         uses: actions/checkout@v6
 
