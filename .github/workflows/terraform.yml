@@ -7,6 +7,15 @@ on:
     branches: [ main, master ]
 
 jobs:
+  azure-login-job:
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Log into Azure using the stored secret
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.MYAZURETENANT }}
+
   # Stage 1: Static Analysis and Formatting
   validate_and_lint:
     name: Lint & Validate
