@@ -1,7 +1,7 @@
 prefix   = "neur"
 location = "centralus"
 
-create_secondary_region = false
+create_secondary_region = true
 secondary_location      = "eastus2"
 
 containers = {
