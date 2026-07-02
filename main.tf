@@ -84,6 +84,7 @@ resource "azurerm_container_group" "containers" {
 
 # Secondary region example
 resource "azurerm_resource_group" "secondary_rg" {
+  count    = var.create_secondary_region ? 1 : 0
   provider = azurerm.secondary
   name     = "${var.prefix}-secondary-rg"
   location = var.secondary_location

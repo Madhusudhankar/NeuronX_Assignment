@@ -1,6 +1,8 @@
 prefix   = "neur"
 location = "centralus"
 
+create_secondary_region = false
+
 containers = {
   app1 = {
     image  = "docker.io/library/nginx:latest"
