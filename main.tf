@@ -1,8 +1,25 @@
-resource "random_string" "suffix" {
+resource "random_string" "primary_suffix" {
   length  = 5
   lower   = true
   special = false
   upper   = false
+}
+
+resource "random_string" "secondary_suffix" {
+  count   = var.create_secondary_region ? 1 : 0
+  length  = 5
+  lower   = true
+  special = false
+  upper   = false
+}
+
+locals {
+  primary_suffix        = random_string.primary_suffix.result
+  secondary_suffix      = var.create_secondary_region ? random_string.secondary_suffix[0].result : null
+  primary_address_space = ["10.0.0.0/16"]
+  primary_subnet_prefix = ["10.0.1.0/24"]
+  secondary_address_space = ["10.1.0.0/16"]
+  secondary_subnet_prefix = ["10.1.1.0/24"]
 }
 
 resource "azurerm_resource_group" "rg" {
@@ -10,7 +27,14 @@ resource "azurerm_resource_group" "rg" {
   location = var.location
 }
 
-# Network module
+resource "azurerm_resource_group" "secondary_rg" {
+  count    = var.create_secondary_region ? 1 : 0
+  provider = azurerm.secondary
+  name     = "${var.prefix}-secondary-rg"
+  location = var.secondary_location
+}
+
+# Primary network module
 module "network" {
   source              = "./modules/network"
   resource_group_name = azurerm_resource_group.rg.name
@@ -20,8 +44,28 @@ module "network" {
   subnet_name = "${var.prefix}-subnet"
   nsg_name    = "${var.prefix}-nsg"
 
-  address_space = ["10.0.0.0/16"]
-  subnet_prefix = ["10.0.1.0/24"]
+  address_space = local.primary_address_space
+  subnet_prefix = local.primary_subnet_prefix
+}
+
+# Optional secondary network module
+module "network_secondary" {
+  count = var.create_secondary_region ? 1 : 0
+
+  providers = {
+    azurerm = azurerm.secondary
+  }
+
+  source              = "./modules/network"
+  resource_group_name = azurerm_resource_group.secondary_rg[0].name
+  location            = var.secondary_location
+
+  vnet_name   = "${var.prefix}-secondary-vnet"
+  subnet_name = "${var.prefix}-secondary-subnet"
+  nsg_name    = "${var.prefix}-secondary-nsg"
+
+  address_space = local.secondary_address_space
+  subnet_prefix = local.secondary_subnet_prefix
 }
 
 module "appservice1" {
@@ -29,22 +73,48 @@ module "appservice1" {
   resource_group_name = azurerm_resource_group.rg.name
   location            = var.location
 
-  name_prefix  = "${var.prefix}-${random_string.suffix.result}"
+  name_prefix  = "${var.prefix}-${local.primary_suffix}"
   sku          = var.app_service_sku
   docker_image = "nginx"
   docker_tag   = "latest"
 }
-# Storage
 
+module "appservice1_secondary" {
+  count = var.create_secondary_region ? 1 : 0
+
+  providers = {
+    azurerm = azurerm.secondary
+  }
+
+  source              = "./modules/appservice1"
+  resource_group_name = azurerm_resource_group.secondary_rg[0].name
+  location            = var.secondary_location
+
+  name_prefix  = "${var.prefix}-${local.secondary_suffix}"
+  sku          = var.app_service_sku
+  docker_image = "nginx"
+  docker_tag   = "latest"
+}
+
+# Primary storage account
 resource "azurerm_storage_account" "sa" {
-  name                     = "${var.prefix}${random_string.suffix.result}"
+  name                     = "${var.prefix}${local.primary_suffix}"
   resource_group_name      = azurerm_resource_group.rg.name
   location                 = var.location
   account_tier             = "Standard"
   account_replication_type = "LRS"
 }
 
-##   Storage Account
+# Optional secondary storage account
+resource "azurerm_storage_account" "secondary_sa" {
+  count                    = var.create_secondary_region ? 1 : 0
+  provider                 = azurerm.secondary
+  name                     = "${var.prefix}${local.secondary_suffix}"
+  resource_group_name      = azurerm_resource_group.secondary_rg[0].name
+  location                 = var.secondary_location
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+}
 
 resource "azurerm_storage_container" "sc" {
   name                  = "tfstate"
@@ -52,17 +122,22 @@ resource "azurerm_storage_container" "sc" {
   container_access_type = "private"
 }
 
-##
-# Multi-Container Deployment
+resource "azurerm_storage_container" "secondary_sc" {
+  count                 = var.create_secondary_region ? 1 : 0
+  name                  = "tfstate"
+  storage_account_name  = azurerm_storage_account.secondary_sa[0].name
+  container_access_type = "private"
+}
+
 resource "azurerm_container_group" "containers" {
   for_each = var.containers
 
-  name                = "${each.key}-${random_string.suffix.result}"
+  name                = "${each.key}-${local.primary_suffix}"
   location            = var.location
   resource_group_name = azurerm_resource_group.rg.name
 
   ip_address_type = "Public"
-  dns_name_label  = "${each.key}-${random_string.suffix.result}"
+  dns_name_label  = "${each.key}-${local.primary_suffix}"
   os_type         = "Linux"
 
   container {
@@ -76,16 +151,33 @@ resource "azurerm_container_group" "containers" {
       protocol = "TCP"
     }
   }
-  depends_on = [
-    azurerm_storage_account.sa
-  ]
 
+  depends_on = [azurerm_storage_account.sa]
 }
 
-# Secondary region example
-resource "azurerm_resource_group" "secondary_rg" {
-  count    = var.create_secondary_region ? 1 : 0
-  provider = azurerm.secondary
-  name     = "${var.prefix}-secondary-rg"
-  location = var.secondary_location
+resource "azurerm_container_group" "secondary_containers" {
+  for_each = var.create_secondary_region ? var.containers : {}
+
+  provider            = azurerm.secondary
+  name                = "${each.key}-${local.secondary_suffix}"
+  location            = var.secondary_location
+  resource_group_name = azurerm_resource_group.secondary_rg[0].name
+
+  ip_address_type = "Public"
+  dns_name_label  = "${each.key}-${local.secondary_suffix}"
+  os_type         = "Linux"
+
+  container {
+    name   = each.key
+    image  = each.value.image
+    cpu    = each.value.cpu
+    memory = each.value.memory
+
+    ports {
+      port     = each.value.port
+      protocol = "TCP"
+    }
+  }
+
+  depends_on = [azurerm_storage_account.secondary_sa[0]]
 }

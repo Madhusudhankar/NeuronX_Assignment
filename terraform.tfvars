@@ -2,6 +2,7 @@ prefix   = "neur"
 location = "centralus"
 
 create_secondary_region = false
+secondary_location      = "eastus2"
 
 containers = {
   app1 = {

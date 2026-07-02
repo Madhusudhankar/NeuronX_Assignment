@@ -7,12 +7,13 @@ variable "location" {
 }
 
 variable "secondary_location" {
-  type    = string
-  default = "Westus"
+  description = "Azure region for the optional secondary deployment"
+  type        = string
+  default     = "eastus2"
 }
 
 variable "create_secondary_region" {
-  description = "Set to true to create the secondary-region resource group"
+  description = "Set to true to create the secondary-region resources"
   type        = bool
   default     = false
 }
