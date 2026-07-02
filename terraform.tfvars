@@ -1,4 +1,4 @@
-prefix   = "demo"
+prefix   = "neur"
 location = "centralus"
 
 containers = {
