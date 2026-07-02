@@ -14,10 +14,10 @@ resource "random_string" "secondary_suffix" {
 }
 
 locals {
-  primary_suffix        = random_string.primary_suffix.result
-  secondary_suffix      = var.create_secondary_region ? random_string.secondary_suffix[0].result : null
-  primary_address_space = ["10.0.0.0/16"]
-  primary_subnet_prefix = ["10.0.1.0/24"]
+  primary_suffix          = random_string.primary_suffix.result
+  secondary_suffix        = var.create_secondary_region ? random_string.secondary_suffix[0].result : null
+  primary_address_space   = ["10.0.0.0/16"]
+  primary_subnet_prefix   = ["10.0.1.0/24"]
   secondary_address_space = ["10.1.0.0/16"]
   secondary_subnet_prefix = ["10.1.1.0/24"]
 }
